@@ -67,21 +67,24 @@ export const syncUserData = async (req, res) => {
 // 🔹 Get User Applied Job Applications
 export const getUserJobApplications = async (req, res) => {
     try {
-        const { clerkId } = req.body;
-        
-        // ✅ Ensure user exists
+        const { clerkId, email } = req.body;
+        console.log(`🔎 Fetching job applications for clerkId=${clerkId}, email=${email}`);
+
+        // Ensure user exists
         const user = await User.findOne({ clerkId });
         if (!user) {
+            console.error(`❌ User not found in MongoDB: clerkId=${clerkId}`);
             return res.status(404).json({ success: false, message: "User not found" });
         }
 
-        console.log(`🔎 Fetching applications for user ID: ${user._id}`);
+        console.log(`🟢 User found:`, user);
 
-        // ✅ Fetch applications using user._id (not clerkId)
+        // Fetch job applications
         const applications = await JobApplication.find({ userId: user._id })
             .populate("companyId", "name email image")
-            .populate("jobId", "title description location category level salary")
-            .exec();
+            .populate("jobId", "title description location category level salary");
+
+        console.log(`🔍 Applications found:`, applications);
 
         if (!applications.length) {
             return res.json({ success: false, message: "No job applications found" });
@@ -98,65 +101,100 @@ export const getUserJobApplications = async (req, res) => {
 
 
 
+
+
 // 🔹 Apply For Job
 export const applyForJob = async (req, res) => {
     try {
-        const { clerkId, email, firstName, lastName, jobId } = req.body;
-        
-        const user = await ensureUserExists(clerkId, email, firstName, lastName);
+        console.log("🔹 Received Request Body:", req.body);
 
-        const isAlreadyApplied = await JobApplication.findOne({ jobId, userId: user._id });
-        if (isAlreadyApplied) {
-            console.warn(`⚠️ User already applied for job ${jobId}`);
-            return res.status(400).json({ success: false, message: "Already Applied" });
+        const { clerkId, email, firstName, lastName, jobId } = req.body;
+
+        if (!clerkId || !jobId) {
+            console.error("❌ Missing required fields");
+            return res.status(400).json({ success: false, message: "Missing required fields" });
         }
 
+        // ✅ Ensure User Exists
+        const user = await ensureUserExists(clerkId, email, firstName, lastName);
+        if (!user) {
+            console.error(`❌ User not found: clerkId=${clerkId}`);
+            return res.status(400).json({ success: false, message: "User not found" });
+        }
+
+        console.log(`✅ User found:`, user);
+
+        // ✅ Check if Job Exists
         const jobData = await Job.findById(jobId);
         if (!jobData) {
             console.error(`❌ Job Not Found: ${jobId}`);
             return res.status(404).json({ success: false, message: "Job Not Found" });
         }
 
-        const newApplication = await JobApplication.create({
+        console.log(`✅ Job found:`, jobData);
+
+        // ✅ Check if User Already Applied
+        const isAlreadyApplied = await JobApplication.findOne({ jobId, userId: user._id });
+        if (isAlreadyApplied) {
+            console.warn(`⚠️ User already applied for job ${jobId}`);
+            return res.status(400).json({ success: false, message: "Already Applied" });
+        }
+
+        console.log("✅ User has not applied yet. Proceeding with application...");
+
+        // ✅ Save Job Application
+        const newApplication = new JobApplication({
             companyId: jobData.companyId,
             userId: user._id,
             jobId,
             date: Date.now(),
         });
 
+        await newApplication.save();
         console.log(`✅ Job Application Saved:`, newApplication);
 
-        res.json({ success: true, message: "Applied Successfully" });
+        res.json({ success: true, message: "Applied Successfully", application: newApplication });
 
     } catch (error) {
         console.error("❌ Error applying for job:", error);
-        res.status(500).json({ success: false, message: "Internal Server Error" });
+        res.status(500).json({ success: false, message: "Internal Server Error", error: error.message });
     }
 };
+
+
 
 
 
 // 🔹 Update User Resume
 export const updateUserResume = async (req, res) => {
     try {
-        const { clerkId, email, firstName, lastName } = req.body;
+        const { clerkId } = req.body;
         const resumeFile = req.file;
 
         if (!resumeFile) {
             return res.status(400).json({ success: false, message: "No resume file uploaded." });
         }
 
-        // We assume that the user exists; if not, ensureUserExists will throw
-        const user = await ensureUserExists(clerkId, email, firstName, lastName);
+        const user = await User.findOne({ clerkId });
+        if (!user) {
+            console.error(`❌ User not found while uploading resume: clerkId=${clerkId}`);
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        console.log(`📌 Uploading resume for user:`, user);
+
         const resumeUpload = await cloudinary.uploader.upload(resumeFile.path);
         user.resume = resumeUpload.secure_url;
         await user.save();
-        // Return updated user object
-        const updatedUser = await User.findOne({ clerkId });
-        res.json({ success: true, message: "Resume Updated", user: updatedUser });
+
+        console.log(`✅ Resume updated successfully:`, user.resume);
+
+        res.json({ success: true, message: "Resume Updated", resumeUrl: user.resume });
+
     } catch (error) {
         console.error("❌ Error updating resume:", error);
-        res.status(500).json({ success: false, message: error.message || "Internal Server Error" });
+        res.status(500).json({ success: false, message: "Internal Server Error" });
     }
 };
+
 
