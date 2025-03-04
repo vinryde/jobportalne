@@ -91,19 +91,22 @@ export const AppContextProvider = (props) => {
     // 🔹 Function to Fetch User's Applied Applications
     const fetchUserApplications = async () => {
         const clerkIdToUse = userData?.clerkId || user?.id;
+        const emailToUse = userData?.email || user?.primaryEmailAddress?.emailAddress || "no-email@placeholder.com";
     
-        if (!clerkIdToUse) {
-            console.warn("⏭ Skipping fetchUserApplications: Missing clerkId.");
+        if (!clerkIdToUse || !emailToUse) {
+            console.warn("⏭ Skipping fetchUserApplications: Missing clerkId or email.", { clerkIdToUse, emailToUse });
             return;
         }
     
         try {
             const token = await getToken();
-            console.log("📩 Sending request to backend for applications:", { clerkId: clerkIdToUse });
+            const requestData = { clerkId: clerkIdToUse, email: emailToUse };
+    
+            console.log("📩 Sending request to backend for applications:", requestData);
     
             const response = await axios.post(
-                `${backendUrl}/api/users/applications`,
-                { clerkId: clerkIdToUse },
+                `${backendUrl}/api/users/applications`, // ✅ Ensure this endpoint is correct
+                requestData,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
     
@@ -121,6 +124,8 @@ export const AppContextProvider = (props) => {
             setUserApplications([]); // ✅ Reset applications on failure
         }
     };
+    
+    
     
     
     
